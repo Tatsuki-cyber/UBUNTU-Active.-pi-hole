@@ -8,10 +8,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Update & install base packages
+      - name: Update & install base packages + Docker + Docker Compose
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl docker.io docker-compose xfce4 xfce4-terminal dbus-x11 x11vnc xvfb
+          sudo apt-get update --fix-missing
+          sudo apt-get upgrade -y
+          sudo apt-get install -y curl xfce4 xfce4-terminal dbus-x11 x11vnc xvfb git lsb-release
+          
+          # Install Docker engine
+          curl -fsSL https://get.docker.com | sh
+          sudo usermod -aG docker $USER
+          
+          # Install latest Docker Compose
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.33.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
 
       - name: Start Docker service
         run: |
@@ -31,6 +41,9 @@ jobs:
                 WEBPASSWORD: "${{ secrets.PIHOLE_PASSWORD }}"
               ports:
                 - "8080:80"
+              volumes:
+                - ./pihole/etc-pihole:/etc/pihole
+                - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
           EOF
 
       - name: Start Pi-hole
