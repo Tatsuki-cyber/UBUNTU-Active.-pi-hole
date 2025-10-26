@@ -1,85 +1,52 @@
-# GitHub Actions workflow: Ubuntu + Tailscale + Pi-hole (Docker) + VNC desktop
-# NOTE: This workflow is intended to run on a *self-hosted* Ubuntu runner (label: "tailscale-host").
-# Required repository secrets:
-#   TAILSCALE_AUTH_KEY - Tailscale pre-auth key
-#   VNC_PASSWORD       - VNC login password
-#   PIHOLE_PASSWORD    - (optional) Pi-hole admin web password
-#   TZ                 - timezone (e.g. "Asia/Dhaka")
-
-name: Ubuntu - Tailscale + Pi-hole + VNC
+name: Ubuntu Hosted - Pi-hole + Tailscale + VNC
 
 on:
   workflow_dispatch:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, tailscale-host]
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Ensure apt is noninteractive
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-
       - name: Update & install base packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl gnupg lsb-release apt-transport-https software-properties-common jq net-tools
+          sudo apt-get install -y curl docker.io docker-compose xfce4 xfce4-terminal dbus-x11 x11vnc xvfb
 
-      - name: Install Docker (if missing)
+      - name: Start Docker service
         run: |
-          if ! command -v docker >/dev/null 2>&1; then
-            curl -fsSL https://get.docker.com | sudo sh
-            sudo usermod -aG docker $USER || true
-          else
-            echo "docker already installed"
-          fi
+          sudo systemctl start docker
+          sudo systemctl enable docker
 
       - name: Create docker-compose for Pi-hole
         run: |
-          cat > docker-compose.pihole.yml <<'EOF'
+          mkdir -p $HOME/pihole/etc-pihole $HOME/pihole/etc-dnsmasq.d
+          cat > docker-compose.yml <<'EOF'
           version: '3'
           services:
             pihole:
               image: pihole/pihole:latest
               restart: unless-stopped
-              network_mode: host
               environment:
-                TZ: "${TZ:-Asia/Dhaka}"
-                WEBPASSWORD: "${PIHOLE_PASSWORD:-admin}"
-                DNSMASQ_USER: "root"
-              volumes:
-                - ./pihole/etc-pihole:/etc/pihole
-                - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+                WEBPASSWORD: "${{ secrets.PIHOLE_PASSWORD }}"
+              ports:
+                - "8080:80"
           EOF
 
-      - name: Start Pi-hole (docker-compose)
-        run: |
-          sudo docker-compose -f docker-compose.pihole.yml up -d
-        env:
-          TZ: ${{ secrets.TZ }}
-          PIHOLE_PASSWORD: ${{ secrets.PIHOLE_PASSWORD }}
+      - name: Start Pi-hole
+        run: sudo docker-compose up -d
 
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscaled &
+          sleep 2
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --hostname github-runner
 
-      - name: Bring up Tailscale (auth key from secrets)
-        run: |
-          sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
-          sleep 1
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --accept-dns=false --accept-routes=false --hostname=github-selfhosted-pihole || true
-
-      - name: Install lightweight desktop & VNC
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-terminal dbus-x11 x11vnc xvfb
-
-      - name: Configure VNC password and start desktop + VNC
-        env:
-          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+      - name: Start VNC desktop
         run: |
           mkdir -p ~/.vnc
-          echo "${VNC_PASSWORD}" | x11vnc -storepasswd - ~/.vnc/passwd
+          echo "${{ secrets.VNC_PASSWORD }}" | x11vnc -storepasswd - ~/.vnc/passwd
           export DISPLAY=:1
           Xvfb :1 -screen 0 1024x768x24 &
           sleep 1
@@ -87,14 +54,12 @@ jobs:
           sleep 3
           nohup x11vnc -display :1 -passwdfile ~/.vnc/passwd -forever -shared -rfbport 5901 &>/tmp/x11vnc.log &
 
-      - name: Show status (Tailscale & Docker)
+      - name: Show status
         run: |
-          echo "Tailscale status:"
-          sudo tailscale status || true
-          echo "Docker ps:"
-          sudo docker ps --format 'table {{.Names}}	{{.Image}}	{{.Ports}}'
+          tailscale status
+          sudo docker ps
 
-      - name: Keep job running (Unlimited time)
+      - name: Keep job running (simulate unlimited)
         run: |
-          echo "Entering unlimited keep-alive loop. Cancel manually in GitHub Actions if needed."
-          while true; do sleep 86400; done
+          echo "Workflow will run until GitHub cancels it (max 6-72h)."
+          while true; do sleep 3600; done
