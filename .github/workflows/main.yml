@@ -1,8 +1,8 @@
 # GitHub Actions workflow: Ubuntu + Tailscale + Pi-hole (Docker) + VNC desktop
 # NOTE: This workflow is intended to run on a *self-hosted* Ubuntu runner (label: "tailscale-host").
 # Required repository secrets:
-#   TAILSCALE_AUTH_KEY - Tailscale pre-auth key (auth key with appropriate capabilities)
-#   VNC_PASSWORD       - password for VNC login
+#   TAILSCALE_AUTH_KEY - Tailscale pre-auth key
+#   VNC_PASSWORD       - VNC login password
 #   PIHOLE_PASSWORD    - (optional) Pi-hole admin web password
 #   TZ                 - timezone (e.g. "Asia/Dhaka")
 
@@ -14,6 +14,7 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, tailscale-host]
+
     steps:
       - name: Ensure apt is noninteractive
         run: |
@@ -60,10 +61,7 @@ jobs:
 
       - name: Install Tailscale
         run: |
-          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/$(lsb_release -cs).noarmor.gpg | sudo gpg --dearmor -o /usr/share/keyrings/tailscale-archive-keyring.gpg
-          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/$(lsb_release -cs).tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
-          sudo apt-get update
-          sudo apt-get install -y tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Bring up Tailscale (auth key from secrets)
         run: |
