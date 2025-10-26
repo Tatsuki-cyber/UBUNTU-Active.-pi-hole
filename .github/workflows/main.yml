@@ -81,13 +81,7 @@ jobs:
           VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
         run: |
           mkdir -p ~/.vnc
-          python3 - <<EOF
-import sys
-pw='''${VNC_PASSWORD}'''
-with open('/tmp/vncpass','w') as f:
-    f.write(pw)
-EOF
-          x11vnc -storepasswd $(cat /tmp/vncpass) ~/.vnc/passwd
+          echo "${VNC_PASSWORD}" | x11vnc -storepasswd - ~/.vnc/passwd
           export DISPLAY=:1
           Xvfb :1 -screen 0 1024x768x24 &
           sleep 1
